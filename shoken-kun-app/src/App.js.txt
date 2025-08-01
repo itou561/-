@@ -1,0 +1,259 @@
+import React, { useState, useEffect } from 'react';
+
+// Define the questions for the teacher to answer
+const questions = [
+  "その児童の性格やクラスでの様子、友達との関わりについて、具体的に教えていただけますか？",
+  "学業面では、どの教科が得意ですか？学習面で特に力を入れていることがあれば教えてください。",
+  "生活面では、係活動や委員会活動、学校行事などでどのような役割を担っていますか？その他、学校生活全般で印象に残っている行動や言動があれば教えてください。"
+];
+
+// Utility function for exponential backoff to handle API rate limits or transient errors
+const callApiWithBackoff = async (apiCall) => {
+  let delay = 1000; // Initial delay of 1 second
+  const maxRetries = 5; // Maximum number of retries
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await apiCall();
+      if (response.ok) {
+        return response; // Return response if successful
+      }
+      // If not OK, it might be a rate limit or transient error, log and retry
+      console.warn(`API call failed with status ${response.status}. Retrying in ${delay}ms...`);
+    } catch (error) {
+      // Catch network errors or other exceptions
+      console.error(`API call failed: ${error.message}. Retrying in ${delay}ms...`);
+    }
+    // Wait for the calculated delay before retrying
+    await new Promise(resolve => setTimeout(resolve, delay));
+    delay *= 2; // Double the delay for the next retry
+  }
+  // If all retries fail, throw an error
+  throw new Error("API call failed after multiple retries.");
+};
+
+// Main App component
+const App = () => {
+  // State variables for attendance number, current question, answers, generated draft, loading status, and errors
+  const [attendanceNumber, setAttendanceNumber] = useState('');
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1); // -1: initial, 0-2: questions, 3: generating, 4: result
+  const [answers, setAnswers] = useState(Array(questions.length).fill('')); // Stores answers for each question
+  const [observationDraft, setObservationDraft] = useState(''); // Stores the generated observation draft
+  // growthPoints state is removed as per user request
+  const [isLoading, setIsLoading] = useState(false); // Indicates if API call is in progress
+  const [error, setError] = useState(''); // Stores any error messages
+
+  // Handle submission of attendance number
+  const handleAttendanceSubmit = () => {
+    if (attendanceNumber.trim() === '') {
+      setError('出席番号を入力してください。'); // Show error if attendance number is empty
+      return;
+    }
+    setError(''); // Clear any previous errors
+    setCurrentQuestionIndex(0); // Move to the first question
+  };
+
+  // Handle submission of an answer to a question
+  const handleAnswerSubmit = () => {
+    if (answers[currentQuestionIndex].trim() === '') {
+      setError('回答を入力してください。'); // Show error if answer is empty
+      return;
+    }
+    setError(''); // Clear any previous errors
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1); // Move to the next question
+    } else {
+      generateObservation(); // All questions answered, proceed to generate observation
+    }
+  };
+
+  // Function to generate observation draft using the Gemini API
+  const generateObservation = async () => {
+    setIsLoading(true); // Set loading state to true
+    setError(''); // Clear any previous errors
+    setCurrentQuestionIndex(3); // Set state to indicate generation is in progress
+
+    // Construct the prompt for the Gemini API
+    const prompt = `あなたは小中学校教員向けの「らくらく所見くん」です。
+以下の児童情報と制約事項に基づき、教育的かつ肯定的な所見を200文字厳守で作成してください。
+
+---
+児童の出席番号: ${attendanceNumber}
+性格・クラスでの様子・友達との関わり: ${answers[0]}
+学業面: ${answers[1]}
+生活面: ${answers[2]}
+---
+
+所見の出力形式と内容:
+* 形式: 自然な文章形式で、読みやすいように2つの段落に分けて出力。
+* 内容:
+    * 児童の出席番号
+    * 1段落目: 学習面における具体的な記述（良い点、成長点）
+    * 2段落目: 生活面における具体的な記述（良い点、成長点）
+
+出力例:
+　「[学習面での具体的なエピソードや学習態度]といった素晴らしい一面を見せてくれました。特に[具体的な成果や成長]は目覚ましく、学習への意欲が感じられます。
+　生活面では[生活面での具体的な行動や態度]に積極的に取り組み、クラスの良い手本となっています。[具体的な行動や努力]を今後も続けていくことでしょう。」
+
+上記出力例の形式に沿って、内容を埋めてください。**ただし、所見の書き始めに「出席番号[出席番号]の児童は、」というフレーズは含めないでください。**
+肯定的かつ建設的な言葉遣いを心がけ、具体的な行動や事実に基づいた記述をしてください。
+個人が特定できる詳細な情報や、ネガティブな印象を与える情報は含めないでください。
+児童の努力や成長が伝わるように記述し、誤字脱字がないように細心の注意を払ってください。
+
+以下の点に特に注意して所見を作成してください:
+- 特定のフレーズや言い回しが繰り返されるのを避けてください。
+- マイナスな発言や否定的な表現は一切使用しないでください。
+- 「願っています。」「期待しています。」のような未来への期待を示す表現は**絶対に**使用しないでください。代わりに、現在の良い行動や成長を強調し、それが今後も続くことを示唆するような表現を使用してください。
+- 提供された情報から、児童の潜在的な能力や、まだ見えていない良い側面をより積極的に引き出して所見に盛り込んでください。
+- 所見は必ず「学習面」の段落から始め、その後に「生活面」の段落を続けてください。この順序は厳守してください。
+`;
+
+    let chatHistory = [];
+    chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+    const payload = { contents: chatHistory };
+    const apiKey = ""; // API key is provided by the environment
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+    try {
+      // Call the API with exponential backoff
+      const response = await callApiWithBackoff(() => fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }));
+
+      const result = await response.json();
+      // Check if the response contains valid content
+      if (result.candidates && result.candidates.length > 0 &&
+          result.candidates[0].content && result.candidates[0].content.parts &&
+          result.candidates[0].content.parts.length > 0) {
+        const text = result.candidates[0].content.parts[0].text;
+        setObservationDraft(text); // Set the generated draft
+        setCurrentQuestionIndex(4); // Move to result display state
+      } else {
+        setError('所見の生成に失敗しました。もう一度お試しください。'); // Show error for unexpected response
+        console.error('Unexpected API response structure:', result);
+      }
+    } catch (err) {
+      setError(`所見の生成中にエラーが発生しました: ${err.message}`); // Show error for API call failure
+      console.error('Error generating observation:', err);
+    } finally {
+      setIsLoading(false); // Reset loading state
+    }
+  };
+
+  // generateGrowthPoints function is removed as per user request
+
+  // Function to reset the application to its initial state
+  const resetApp = () => {
+    setAttendanceNumber('');
+    setCurrentQuestionIndex(-1);
+    setAnswers(Array(questions.length).fill(''));
+    setObservationDraft('');
+    // growthPoints state reset is removed
+    setIsLoading(false);
+    setError('');
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-4 font-inter">
+      <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-2xl border border-gray-200">
+        <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">らくらく所見くん</h1>
+        <p className="text-center text-gray-600 mb-8">児童の情報を入力して、所見の参考例文を作成します。</p>
+
+        {/* Error display area */}
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+            <strong className="font-bold">エラー: </strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
+
+        {/* Initial screen: Attendance number input */}
+        {currentQuestionIndex === -1 && (
+          <div className="space-y-6">
+            <label htmlFor="attendanceNumber" className="block text-lg font-medium text-gray-700">
+              所見を作成する児童の**出席番号**を教えてください。
+            </label>
+            <input
+              type="text"
+              id="attendanceNumber"
+              className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-lg"
+              value={attendanceNumber}
+              onChange={(e) => setAttendanceNumber(e.target.value)}
+              placeholder="例: 1"
+            />
+            <button
+              onClick={handleAttendanceSubmit}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105"
+            >
+              次へ
+            </button>
+          </div>
+        )}
+
+        {/* Question display area */}
+        {currentQuestionIndex >= 0 && currentQuestionIndex < questions.length && (
+          <div className="space-y-6">
+            <p className="text-lg font-medium text-gray-700">
+              **質問 {currentQuestionIndex + 1} / {questions.length}**
+            </p>
+            <label htmlFor="answer" className="block text-xl font-semibold text-gray-800">
+              {questions[currentQuestionIndex]}
+            </label>
+            <textarea
+              id="answer"
+              className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-lg resize-y h-32"
+              value={answers[currentQuestionIndex]}
+              onChange={(e) => {
+                const newAnswers = [...answers];
+                newAnswers[currentQuestionIndex] = e.target.value;
+                setAnswers(newAnswers);
+              }}
+              placeholder="簡潔にご記入ください..."
+            ></textarea>
+            <button
+              onClick={handleAnswerSubmit}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105"
+              disabled={isLoading} // Disable button while loading
+            >
+              {currentQuestionIndex === questions.length - 1 ? '所見を生成する' : '次の質問へ'}
+            </button>
+          </div>
+        )}
+
+        {/* Loading indicator */}
+        {isLoading && (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
+            <p className="text-gray-700 text-lg">所見を生成中です。しばらくお待ちください...</p>
+          </div>
+        )}
+
+        {/* Result display area */}
+        {currentQuestionIndex === 4 && observationDraft && (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">生成された所見（参考例文）</h2>
+            <div className="bg-blue-50 p-6 rounded-lg border border-blue-200 shadow-inner">
+              <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">
+                {observationDraft}
+              </p>
+            </div>
+            <p className="text-sm text-gray-600 mt-4 text-center">
+              ※この所見はAIが生成した参考例文です。必要に応じて加筆・修正してご活用ください。
+            </p>
+
+            {/* "次の児童を作成する" button */}
+            <button
+              onClick={resetApp}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 mt-6"
+            >
+              次の児童を作成する
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default App;
