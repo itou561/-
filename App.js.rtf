@@ -1,0 +1,403 @@
+{\rtf1\ansi\ansicpg932\cocoartf2639
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;\f1\fnil\fcharset128 HiraginoSans-W3;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 import React, \{ useState, useEffect \} from 'react';\
+\
+// Define the questions for the teacher to answer\
+const questions = [\
+\'a0 "
+\f1 \'82\'bb\'82\'cc\'8e\'99\'93\'b6\'82\'cc\'90\'ab\'8a\'69\'82\'e2\'83\'4e\'83\'89\'83\'58\'82\'c5\'82\'cc\'97\'6c\'8e\'71\'81\'41\'97\'46\'92\'42\'82\'c6\'82\'cc\'8a\'d6\'82\'ed\'82\'e8\'82\'c9\'82\'c2\'82\'a2\'82\'c4\'81\'41\'8b\'ef\'91\'cc\'93\'49\'82\'c9\'8b\'b3\'82\'a6\'82\'c4\'82\'a2\'82\'bd\'82\'be\'82\'af\'82\'dc\'82\'b7\'82\'a9\'81\'48
+\f0 ",\
+\'a0 "
+\f1 \'8a\'77\'8b\'c6\'96\'ca\'82\'c5\'82\'cd\'81\'41\'82\'c7\'82\'cc\'8b\'b3\'89\'c8\'82\'aa\'93\'be\'88\'d3\'82\'c5\'82\'b7\'82\'a9\'81\'48\'8a\'77\'8f\'4b\'96\'ca\'82\'c5\'93\'c1\'82\'c9\'97\'cd\'82\'f0\'93\'fc\'82\'ea\'82\'c4\'82\'a2\'82\'e9\'82\'b1\'82\'c6\'82\'aa\'82\'a0\'82\'ea\'82\'ce\'8b\'b3\'82\'a6\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 ",\
+\'a0 "
+\f1 \'90\'b6\'8a\'88\'96\'ca\'82\'c5\'82\'cd\'81\'41\'8c\'57\'8a\'88\'93\'ae\'82\'e2\'88\'cf\'88\'f5\'89\'ef\'8a\'88\'93\'ae\'81\'41\'8a\'77\'8d\'5a\'8d\'73\'8e\'96\'82\'c8\'82\'c7\'82\'c5\'82\'c7\'82\'cc\'82\'e6\'82\'a4\'82\'c8\'96\'f0\'8a\'84\'82\'f0\'92\'53\'82\'c1\'82\'c4\'82\'a2\'82\'dc\'82\'b7\'82\'a9\'81\'48\'82\'bb\'82\'cc\'91\'bc\'81\'41\'8a\'77\'8d\'5a\'90\'b6\'8a\'88\'91\'53\'94\'ca\'82\'c5\'88\'f3\'8f\'db\'82\'c9\'8e\'63\'82\'c1\'82\'c4\'82\'a2\'82\'e9\'8d\'73\'93\'ae\'82\'e2\'8c\'be\'93\'ae\'82\'aa\'82\'a0\'82\'ea\'82\'ce\'8b\'b3\'82\'a6\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 "\
+];\
+\
+// Utility function for exponential backoff to handle API rate limits or transient errors\
+const callApiWithBackoff = async (apiCall) => \{\
+\'a0 let delay = 1000; // Initial delay of 1 second\
+\'a0 const maxRetries = 5; // Maximum number of retries\
+\'a0 for (let i = 0; i < maxRetries; i++) \{\
+\'a0 \'a0 try \{\
+\'a0 \'a0 \'a0 const response = await apiCall();\
+\'a0 \'a0 \'a0 if (response.ok) \{\
+\'a0 \'a0 \'a0 \'a0 return response; // Return response if successful\
+\'a0 \'a0 \'a0 \}\
+\'a0 \'a0 \'a0 // If not OK, it might be a rate limit or transient error, log and retry\
+\'a0 \'a0 \'a0 console.warn(`API call failed with status $\{response.status\}. Retrying in $\{delay\}ms...`);\
+\'a0 \'a0 \} catch (error) \{\
+\'a0 \'a0 \'a0 // Catch network errors or other exceptions\
+\'a0 \'a0 \'a0 console.error(`API call failed: $\{error.message\}. Retrying in $\{delay\}ms...`);\
+\'a0 \'a0 \}\
+\'a0 \'a0 // Wait for the calculated delay before retrying\
+\'a0 \'a0 await new Promise(resolve => setTimeout(resolve, delay));\
+\'a0 \'a0 delay *= 2; // Double the delay for the next retry\
+\'a0 \}\
+\'a0 // If all retries fail, throw an error\
+\'a0 throw new Error("API call failed after multiple retries.");\
+\};\
+\
+// Main App component\
+const App = () => \{\
+\'a0 // State variables for attendance number, current question, answers, generated draft, loading status, and errors\
+\'a0 const [attendanceNumber, setAttendanceNumber] = useState('');\
+\'a0 const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1); // -1: initial, 0-2: questions, 3: generating, 4: result\
+\'a0 const [answers, setAnswers] = useState(Array(questions.length).fill('')); // Stores answers for each question\
+\'a0 const [observationDraft, setObservationDraft] = useState(''); // Stores the generated observation draft\
+\'a0 // growthPoints state is removed as per user request\
+\'a0 const [isLoading, setIsLoading] = useState(false); // Indicates if API call is in progress\
+\'a0 const [error, setError] = useState(''); // Stores any error messages\
+\
+\'a0 // Handle submission of attendance number\
+\'a0 const handleAttendanceSubmit = () => \{\
+\'a0 \'a0 if (attendanceNumber.trim() === '') \{\
+\'a0 \'a0 \'a0 setError('
+\f1 \'8f\'6f\'90\'c8\'94\'d4\'8d\'86\'82\'f0\'93\'fc\'97\'cd\'82\'b5\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 '); // Show error if attendance number is empty\
+\'a0 \'a0 \'a0 return;\
+\'a0 \'a0 \}\
+\'a0 \'a0 setError(''); // Clear any previous errors\
+\'a0 \'a0 setCurrentQuestionIndex(0); // Move to the first question\
+\'a0 \};\
+\
+\'a0 // Handle submission of an answer to a question\
+\'a0 const handleAnswerSubmit = () => \{\
+\'a0 \'a0 if (answers[currentQuestionIndex].trim() === '') \{\
+\'a0 \'a0 \'a0 setError('
+\f1 \'89\'f1\'93\'9a\'82\'f0\'93\'fc\'97\'cd\'82\'b5\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 '); // Show error if answer is empty\
+\'a0 \'a0 \'a0 return;\
+\'a0 \'a0 \}\
+\'a0 \'a0 setError(''); // Clear any previous errors\
+\'a0 \'a0 if (currentQuestionIndex < questions.length - 1) \{\
+\'a0 \'a0 \'a0 setCurrentQuestionIndex(currentQuestionIndex + 1); // Move to the next question\
+\'a0 \'a0 \} else \{\
+\'a0 \'a0 \'a0 generateObservation(); // All questions answered, proceed to generate observation\
+\'a0 \'a0 \}\
+\'a0 \};\
+\
+\'a0 // Function to generate observation draft using the Gemini API\
+\'a0 const generateObservation = async () => \{\
+\'a0 \'a0 setIsLoading(true); // Set loading state to true\
+\'a0 \'a0 setError(''); // Clear any previous errors\
+\'a0 \'a0 setCurrentQuestionIndex(3); // Set state to indicate generation is in progress\
+\
+\'a0 \'a0 // Construct the prompt for the Gemini API\
+\'a0 \'a0 const prompt = `
+\f1 \'82\'a0\'82\'c8\'82\'bd\'82\'cd\'8f\'ac\'92\'86\'8a\'77\'8d\'5a\'8b\'b3\'88\'f5\'8c\'fc\'82\'af\'82\'cc\'81\'75\'82\'e7\'82\'ad\'82\'e7\'82\'ad\'8f\'8a\'8c\'a9\'82\'ad\'82\'f1\'81\'76\'82\'c5\'82\'b7\'81\'42
+\f0 \
+
+\f1 \'88\'c8\'89\'ba\'82\'cc\'8e\'99\'93\'b6\'8f\'ee\'95\'f1\'82\'c6\'90\'a7\'96\'f1\'8e\'96\'8d\'80\'82\'c9\'8a\'ee\'82\'c3\'82\'ab\'81\'41\'8b\'b3\'88\'e7\'93\'49\'82\'a9\'82\'c2\'8d\'6d\'92\'e8\'93\'49\'82\'c8\'8f\'8a\'8c\'a9\'82\'f0
+\f0 200
+\f1 \'95\'b6\'8e\'9a\'8c\'b5\'8e\'e7\'82\'c5\'8d\'ec\'90\'ac\'82\'b5\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+\
+---\
+
+\f1 \'8e\'99\'93\'b6\'82\'cc\'8f\'6f\'90\'c8\'94\'d4\'8d\'86
+\f0 : $\{attendanceNumber\}\
+
+\f1 \'90\'ab\'8a\'69\'81\'45\'83\'4e\'83\'89\'83\'58\'82\'c5\'82\'cc\'97\'6c\'8e\'71\'81\'45\'97\'46\'92\'42\'82\'c6\'82\'cc\'8a\'d6\'82\'ed\'82\'e8
+\f0 : $\{answers[0]\}\
+
+\f1 \'8a\'77\'8b\'c6\'96\'ca
+\f0 : $\{answers[1]\}\
+
+\f1 \'90\'b6\'8a\'88\'96\'ca
+\f0 : $\{answers[2]\}\
+---\
+\
+
+\f1 \'8f\'8a\'8c\'a9\'82\'cc\'8f\'6f\'97\'cd\'8c\'60\'8e\'ae\'82\'c6\'93\'e0\'97\'65
+\f0 :\
+* 
+\f1 \'8c\'60\'8e\'ae
+\f0 : 
+\f1 \'8e\'a9\'91\'52\'82\'c8\'95\'b6\'8f\'cd\'8c\'60\'8e\'ae\'82\'c5\'81\'41\'93\'c7\'82\'dd\'82\'e2\'82\'b7\'82\'a2\'82\'e6\'82\'a4\'82\'c9
+\f0 2
+\f1 \'82\'c2\'82\'cc\'92\'69\'97\'8e\'82\'c9\'95\'aa\'82\'af\'82\'c4\'8f\'6f\'97\'cd\'81\'42
+\f0 \
+* 
+\f1 \'93\'e0\'97\'65
+\f0 :\
+\'a0 \'a0 * 
+\f1 \'8e\'99\'93\'b6\'82\'cc\'8f\'6f\'90\'c8\'94\'d4\'8d\'86
+\f0 \
+\'a0 \'a0 * 1
+\f1 \'92\'69\'97\'8e\'96\'da
+\f0 : 
+\f1 \'8a\'77\'8f\'4b\'96\'ca\'82\'c9\'82\'a8\'82\'af\'82\'e9\'8b\'ef\'91\'cc\'93\'49\'82\'c8\'8b\'4c\'8f\'71\'81\'69\'97\'c7\'82\'a2\'93\'5f\'81\'41\'90\'ac\'92\'b7\'93\'5f\'81\'6a
+\f0 \
+\'a0 \'a0 * 2
+\f1 \'92\'69\'97\'8e\'96\'da
+\f0 : 
+\f1 \'90\'b6\'8a\'88\'96\'ca\'82\'c9\'82\'a8\'82\'af\'82\'e9\'8b\'ef\'91\'cc\'93\'49\'82\'c8\'8b\'4c\'8f\'71\'81\'69\'97\'c7\'82\'a2\'93\'5f\'81\'41\'90\'ac\'92\'b7\'93\'5f\'81\'6a
+\f0 \
+\
+
+\f1 \'8f\'6f\'97\'cd\'97\'e1
+\f0 :\
+
+\f1 \'81\'40\'81\'75
+\f0 [
+\f1 \'8a\'77\'8f\'4b\'96\'ca\'82\'c5\'82\'cc\'8b\'ef\'91\'cc\'93\'49\'82\'c8\'83\'47\'83\'73\'83\'5c\'81\'5b\'83\'68\'82\'e2\'8a\'77\'8f\'4b\'91\'d4\'93\'78
+\f0 ]
+\f1 \'82\'c6\'82\'a2\'82\'c1\'82\'bd\'91\'66\'90\'b0\'82\'e7\'82\'b5\'82\'a2\'88\'ea\'96\'ca\'82\'f0\'8c\'a9\'82\'b9\'82\'c4\'82\'ad\'82\'ea\'82\'dc\'82\'b5\'82\'bd\'81\'42\'93\'c1\'82\'c9
+\f0 [
+\f1 \'8b\'ef\'91\'cc\'93\'49\'82\'c8\'90\'ac\'89\'ca\'82\'e2\'90\'ac\'92\'b7
+\f0 ]
+\f1 \'82\'cd\'96\'da\'8a\'6f\'82\'dc\'82\'b5\'82\'ad\'81\'41\'8a\'77\'8f\'4b\'82\'d6\'82\'cc\'88\'d3\'97\'7e\'82\'aa\'8a\'b4\'82\'b6\'82\'e7\'82\'ea\'82\'dc\'82\'b7\'81\'42
+\f0 \
+
+\f1 \'81\'40\'90\'b6\'8a\'88\'96\'ca\'82\'c5\'82\'cd
+\f0 [
+\f1 \'90\'b6\'8a\'88\'96\'ca\'82\'c5\'82\'cc\'8b\'ef\'91\'cc\'93\'49\'82\'c8\'8d\'73\'93\'ae\'82\'e2\'91\'d4\'93\'78
+\f0 ]
+\f1 \'82\'c9\'90\'cf\'8b\'c9\'93\'49\'82\'c9\'8e\'e6\'82\'e8\'91\'67\'82\'dd\'81\'41\'83\'4e\'83\'89\'83\'58\'82\'cc\'97\'c7\'82\'a2\'8e\'e8\'96\'7b\'82\'c6\'82\'c8\'82\'c1\'82\'c4\'82\'a2\'82\'dc\'82\'b7\'81\'42
+\f0 [
+\f1 \'8b\'ef\'91\'cc\'93\'49\'82\'c8\'8d\'73\'93\'ae\'82\'e2\'93\'77\'97\'cd
+\f0 ]
+\f1 \'82\'f0\'8d\'a1\'8c\'e3\'82\'e0\'91\'b1\'82\'af\'82\'c4\'82\'a2\'82\'ad\'82\'b1\'82\'c6\'82\'c5\'82\'b5\'82\'e5\'82\'a4\'81\'42\'81\'76
+\f0 \
+\
+
+\f1 \'8f\'e3\'8b\'4c\'8f\'6f\'97\'cd\'97\'e1\'82\'cc\'8c\'60\'8e\'ae\'82\'c9\'89\'88\'82\'c1\'82\'c4\'81\'41\'93\'e0\'97\'65\'82\'f0\'96\'84\'82\'df\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 **
+\f1 \'82\'bd\'82\'be\'82\'b5\'81\'41\'8f\'8a\'8c\'a9\'82\'cc\'8f\'91\'82\'ab\'8e\'6e\'82\'df\'82\'c9\'81\'75\'8f\'6f\'90\'c8\'94\'d4\'8d\'86
+\f0 [
+\f1 \'8f\'6f\'90\'c8\'94\'d4\'8d\'86
+\f0 ]
+\f1 \'82\'cc\'8e\'99\'93\'b6\'82\'cd\'81\'41\'81\'76\'82\'c6\'82\'a2\'82\'a4\'83\'74\'83\'8c\'81\'5b\'83\'59\'82\'cd\'8a\'dc\'82\'df\'82\'c8\'82\'a2\'82\'c5\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 **\
+
+\f1 \'8d\'6d\'92\'e8\'93\'49\'82\'a9\'82\'c2\'8c\'9a\'90\'dd\'93\'49\'82\'c8\'8c\'be\'97\'74\'8c\'ad\'82\'a2\'82\'f0\'90\'53\'82\'aa\'82\'af\'81\'41\'8b\'ef\'91\'cc\'93\'49\'82\'c8\'8d\'73\'93\'ae\'82\'e2\'8e\'96\'8e\'c0\'82\'c9\'8a\'ee\'82\'c3\'82\'a2\'82\'bd\'8b\'4c\'8f\'71\'82\'f0\'82\'b5\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+
+\f1 \'8c\'c2\'90\'6c\'82\'aa\'93\'c1\'92\'e8\'82\'c5\'82\'ab\'82\'e9\'8f\'da\'8d\'d7\'82\'c8\'8f\'ee\'95\'f1\'82\'e2\'81\'41\'83\'6c\'83\'4b\'83\'65\'83\'42\'83\'75\'82\'c8\'88\'f3\'8f\'db\'82\'f0\'97\'5e\'82\'a6\'82\'e9\'8f\'ee\'95\'f1\'82\'cd\'8a\'dc\'82\'df\'82\'c8\'82\'a2\'82\'c5\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+
+\f1 \'8e\'99\'93\'b6\'82\'cc\'93\'77\'97\'cd\'82\'e2\'90\'ac\'92\'b7\'82\'aa\'93\'60\'82\'ed\'82\'e9\'82\'e6\'82\'a4\'82\'c9\'8b\'4c\'8f\'71\'82\'b5\'81\'41\'8c\'eb\'8e\'9a\'92\'45\'8e\'9a\'82\'aa\'82\'c8\'82\'a2\'82\'e6\'82\'a4\'82\'c9\'8d\'d7\'90\'53\'82\'cc\'92\'8d\'88\'d3\'82\'f0\'95\'a5\'82\'c1\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+\
+
+\f1 \'88\'c8\'89\'ba\'82\'cc\'93\'5f\'82\'c9\'93\'c1\'82\'c9\'92\'8d\'88\'d3\'82\'b5\'82\'c4\'8f\'8a\'8c\'a9\'82\'f0\'8d\'ec\'90\'ac\'82\'b5\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2
+\f0 :\
+- 
+\f1 \'93\'c1\'92\'e8\'82\'cc\'83\'74\'83\'8c\'81\'5b\'83\'59\'82\'e2\'8c\'be\'82\'a2\'89\'f1\'82\'b5\'82\'aa\'8c\'4a\'82\'e8\'95\'d4\'82\'b3\'82\'ea\'82\'e9\'82\'cc\'82\'f0\'94\'f0\'82\'af\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+- 
+\f1 \'83\'7d\'83\'43\'83\'69\'83\'58\'82\'c8\'94\'ad\'8c\'be\'82\'e2\'94\'db\'92\'e8\'93\'49\'82\'c8\'95\'5c\'8c\'bb\'82\'cd\'88\'ea\'90\'d8\'8e\'67\'97\'70\'82\'b5\'82\'c8\'82\'a2\'82\'c5\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+- 
+\f1 \'81\'75\'8a\'e8\'82\'c1\'82\'c4\'82\'a2\'82\'dc\'82\'b7\'81\'42\'81\'76\'81\'75\'8a\'fa\'91\'d2\'82\'b5\'82\'c4\'82\'a2\'82\'dc\'82\'b7\'81\'42\'81\'76\'82\'cc\'82\'e6\'82\'a4\'82\'c8\'96\'a2\'97\'88\'82\'d6\'82\'cc\'8a\'fa\'91\'d2\'82\'f0\'8e\'a6\'82\'b7\'95\'5c\'8c\'bb\'82\'cd
+\f0 **
+\f1 \'90\'e2\'91\'ce\'82\'c9
+\f0 **
+\f1 \'8e\'67\'97\'70\'82\'b5\'82\'c8\'82\'a2\'82\'c5\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42\'91\'e3\'82\'ed\'82\'e8\'82\'c9\'81\'41\'8c\'bb\'8d\'dd\'82\'cc\'97\'c7\'82\'a2\'8d\'73\'93\'ae\'82\'e2\'90\'ac\'92\'b7\'82\'f0\'8b\'ad\'92\'b2\'82\'b5\'81\'41\'82\'bb\'82\'ea\'82\'aa\'8d\'a1\'8c\'e3\'82\'e0\'91\'b1\'82\'ad\'82\'b1\'82\'c6\'82\'f0\'8e\'a6\'8d\'b4\'82\'b7\'82\'e9\'82\'e6\'82\'a4\'82\'c8\'95\'5c\'8c\'bb\'82\'f0\'8e\'67\'97\'70\'82\'b5\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+- 
+\f1 \'92\'f1\'8b\'9f\'82\'b3\'82\'ea\'82\'bd\'8f\'ee\'95\'f1\'82\'a9\'82\'e7\'81\'41\'8e\'99\'93\'b6\'82\'cc\'90\'f6\'8d\'dd\'93\'49\'82\'c8\'94\'5c\'97\'cd\'82\'e2\'81\'41\'82\'dc\'82\'be\'8c\'a9\'82\'a6\'82\'c4\'82\'a2\'82\'c8\'82\'a2\'97\'c7\'82\'a2\'91\'a4\'96\'ca\'82\'f0\'82\'e6\'82\'e8\'90\'cf\'8b\'c9\'93\'49\'82\'c9\'88\'f8\'82\'ab\'8f\'6f\'82\'b5\'82\'c4\'8f\'8a\'8c\'a9\'82\'c9\'90\'b7\'82\'e8\'8d\'9e\'82\'f1\'82\'c5\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+- 
+\f1 \'8f\'8a\'8c\'a9\'82\'cd\'95\'4b\'82\'b8\'81\'75\'8a\'77\'8f\'4b\'96\'ca\'81\'76\'82\'cc\'92\'69\'97\'8e\'82\'a9\'82\'e7\'8e\'6e\'82\'df\'81\'41\'82\'bb\'82\'cc\'8c\'e3\'82\'c9\'81\'75\'90\'b6\'8a\'88\'96\'ca\'81\'76\'82\'cc\'92\'69\'97\'8e\'82\'f0\'91\'b1\'82\'af\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42\'82\'b1\'82\'cc\'8f\'87\'8f\'98\'82\'cd\'8c\'b5\'8e\'e7\'82\'b5\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+`;\
+\
+\'a0 \'a0 let chatHistory = [];\
+\'a0 \'a0 chatHistory.push(\{ role: "user", parts: [\{ text: prompt \}] \});\
+\'a0 \'a0 const payload = \{ contents: chatHistory \};\
+\'a0 \'a0 const apiKey = ""; // API key is provided by the environment\
+\'a0 \'a0 const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=$\{apiKey\}`;\
+\
+\'a0 \'a0 try \{\
+\'a0 \'a0 \'a0 // Call the API with exponential backoff\
+\'a0 \'a0 \'a0 const response = await callApiWithBackoff(() => fetch(apiUrl, \{\
+\'a0 \'a0 \'a0 \'a0 method: 'POST',\
+\'a0 \'a0 \'a0 \'a0 headers: \{ 'Content-Type': 'application/json' \},\
+\'a0 \'a0 \'a0 \'a0 body: JSON.stringify(payload)\
+\'a0 \'a0 \'a0 \}));\
+\
+\'a0 \'a0 \'a0 const result = await response.json();\
+\'a0 \'a0 \'a0 // Check if the response contains valid content\
+\'a0 \'a0 \'a0 if (result.candidates && result.candidates.length > 0 &&\
+\'a0 \'a0 \'a0 \'a0 \'a0 result.candidates[0].content && result.candidates[0].content.parts &&\
+\'a0 \'a0 \'a0 \'a0 \'a0 result.candidates[0].content.parts.length > 0) \{\
+\'a0 \'a0 \'a0 \'a0 const text = result.candidates[0].content.parts[0].text;\
+\'a0 \'a0 \'a0 \'a0 setObservationDraft(text); // Set the generated draft\
+\'a0 \'a0 \'a0 \'a0 setCurrentQuestionIndex(4); // Move to result display state\
+\'a0 \'a0 \'a0 \} else \{\
+\'a0 \'a0 \'a0 \'a0 setError('
+\f1 \'8f\'8a\'8c\'a9\'82\'cc\'90\'b6\'90\'ac\'82\'c9\'8e\'b8\'94\'73\'82\'b5\'82\'dc\'82\'b5\'82\'bd\'81\'42\'82\'e0\'82\'a4\'88\'ea\'93\'78\'82\'a8\'8e\'8e\'82\'b5\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 '); // Show error for unexpected response\
+\'a0 \'a0 \'a0 \'a0 console.error('Unexpected API response structure:', result);\
+\'a0 \'a0 \'a0 \}\
+\'a0 \'a0 \} catch (err) \{\
+\'a0 \'a0 \'a0 setError(`
+\f1 \'8f\'8a\'8c\'a9\'82\'cc\'90\'b6\'90\'ac\'92\'86\'82\'c9\'83\'47\'83\'89\'81\'5b\'82\'aa\'94\'ad\'90\'b6\'82\'b5\'82\'dc\'82\'b5\'82\'bd
+\f0 : $\{err.message\}`); // Show error for API call failure\
+\'a0 \'a0 \'a0 console.error('Error generating observation:', err);\
+\'a0 \'a0 \} finally \{\
+\'a0 \'a0 \'a0 setIsLoading(false); // Reset loading state\
+\'a0 \'a0 \}\
+\'a0 \};\
+\
+\'a0 // generateGrowthPoints function is removed as per user request\
+\
+\'a0 // Function to reset the application to its initial state\
+\'a0 const resetApp = () => \{\
+\'a0 \'a0 setAttendanceNumber('');\
+\'a0 \'a0 setCurrentQuestionIndex(-1);\
+\'a0 \'a0 setAnswers(Array(questions.length).fill(''));\
+\'a0 \'a0 setObservationDraft('');\
+\'a0 \'a0 // growthPoints state reset is removed\
+\'a0 \'a0 setIsLoading(false);\
+\'a0 \'a0 setError('');\
+\'a0 \};\
+\
+\'a0 return (\
+\'a0 \'a0 <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center p-4 font-inter">\
+\'a0 \'a0 \'a0 <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-2xl border border-gray-200">\
+\'a0 \'a0 \'a0 \'a0 <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">
+\f1 \'82\'e7\'82\'ad\'82\'e7\'82\'ad\'8f\'8a\'8c\'a9\'82\'ad\'82\'f1
+\f0 </h1>\
+\'a0 \'a0 \'a0 \'a0 <p className="text-center text-gray-600 mb-8">
+\f1 \'8e\'99\'93\'b6\'82\'cc\'8f\'ee\'95\'f1\'82\'f0\'93\'fc\'97\'cd\'82\'b5\'82\'c4\'81\'41\'8f\'8a\'8c\'a9\'82\'cc\'8e\'51\'8d\'6c\'97\'e1\'95\'b6\'82\'f0\'8d\'ec\'90\'ac\'82\'b5\'82\'dc\'82\'b7\'81\'42
+\f0 </p>\
+\
+\'a0 \'a0 \'a0 \'a0 \{/* Error display area */\}\
+\'a0 \'a0 \'a0 \'a0 \{error && (\
+\'a0 \'a0 \'a0 \'a0 \'a0 <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <strong className="font-bold">
+\f1 \'83\'47\'83\'89\'81\'5b
+\f0 : </strong>\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <span className="block sm:inline">\{error\}</span>\
+\'a0 \'a0 \'a0 \'a0 \'a0 </div>\
+\'a0 \'a0 \'a0 \'a0 )\}\
+\
+\'a0 \'a0 \'a0 \'a0 \{/* Initial screen: Attendance number input */\}\
+\'a0 \'a0 \'a0 \'a0 \{currentQuestionIndex === -1 && (\
+\'a0 \'a0 \'a0 \'a0 \'a0 <div className="space-y-6">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <label htmlFor="attendanceNumber" className="block text-lg font-medium text-gray-700">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 
+\f1 \'8f\'8a\'8c\'a9\'82\'f0\'8d\'ec\'90\'ac\'82\'b7\'82\'e9\'8e\'99\'93\'b6\'82\'cc
+\f0 **
+\f1 \'8f\'6f\'90\'c8\'94\'d4\'8d\'86
+\f0 **
+\f1 \'82\'f0\'8b\'b3\'82\'a6\'82\'c4\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 </label>\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <input\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 type="text"\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 id="attendanceNumber"\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 className="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-lg"\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 value=\{attendanceNumber\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 onChange=\{(e) => setAttendanceNumber(e.target.value)\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 placeholder="
+\f1 \'97\'e1
+\f0 : 1"\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 />\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <button\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 onClick=\{handleAttendanceSubmit\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105"\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 >\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 
+\f1 \'8e\'9f\'82\'d6
+\f0 \
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 </button>\
+\'a0 \'a0 \'a0 \'a0 \'a0 </div>\
+\'a0 \'a0 \'a0 \'a0 )\}\
+\
+\'a0 \'a0 \'a0 \'a0 \{/* Question display area */\}\
+\'a0 \'a0 \'a0 \'a0 \{currentQuestionIndex >= 0 && currentQuestionIndex < questions.length && (\
+\'a0 \'a0 \'a0 \'a0 \'a0 <div className="space-y-6">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <p className="text-lg font-medium text-gray-700">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 **
+\f1 \'8e\'bf\'96\'e2
+\f0  \{currentQuestionIndex + 1\} / \{questions.length\}**\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 </p>\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <label htmlFor="answer" className="block text-xl font-semibold text-gray-800">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \{questions[currentQuestionIndex]\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 </label>\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <textarea\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 id="answer"\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 className="mt-1 block w-full px-4 py-3 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-lg resize-y h-32"\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 value=\{answers[currentQuestionIndex]\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 onChange=\{(e) => \{\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 const newAnswers = [...answers];\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 newAnswers[currentQuestionIndex] = e.target.value;\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 setAnswers(newAnswers);\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \}\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 placeholder="
+\f1 \'8a\'c8\'8c\'89\'82\'c9\'82\'b2\'8b\'4c\'93\'fc\'82\'ad\'82\'be\'82\'b3\'82\'a2
+\f0 ..."\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 ></textarea>\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <button\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 onClick=\{handleAnswerSubmit\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105"\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 disabled=\{isLoading\} // Disable button while loading\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 >\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \{currentQuestionIndex === questions.length - 1 ? '
+\f1 \'8f\'8a\'8c\'a9\'82\'f0\'90\'b6\'90\'ac\'82\'b7\'82\'e9
+\f0 ' : '
+\f1 \'8e\'9f\'82\'cc\'8e\'bf\'96\'e2\'82\'d6
+\f0 '\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 </button>\
+\'a0 \'a0 \'a0 \'a0 \'a0 </div>\
+\'a0 \'a0 \'a0 \'a0 )\}\
+\
+\'a0 \'a0 \'a0 \'a0 \{/* Loading indicator */\}\
+\'a0 \'a0 \'a0 \'a0 \{isLoading && (\
+\'a0 \'a0 \'a0 \'a0 \'a0 <div className="text-center py-8">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <p className="text-gray-700 text-lg">
+\f1 \'8f\'8a\'8c\'a9\'82\'f0\'90\'b6\'90\'ac\'92\'86\'82\'c5\'82\'b7\'81\'42\'82\'b5\'82\'ce\'82\'e7\'82\'ad\'82\'a8\'91\'d2\'82\'bf\'82\'ad\'82\'be\'82\'b3\'82\'a2
+\f0 ...</p>\
+\'a0 \'a0 \'a0 \'a0 \'a0 </div>\
+\'a0 \'a0 \'a0 \'a0 )\}\
+\
+\'a0 \'a0 \'a0 \'a0 \{/* Result display area */\}\
+\'a0 \'a0 \'a0 \'a0 \{currentQuestionIndex === 4 && observationDraft && (\
+\'a0 \'a0 \'a0 \'a0 \'a0 <div className="space-y-6">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <h2 className="text-2xl font-bold text-gray-800 mb-4 text-center">
+\f1 \'90\'b6\'90\'ac\'82\'b3\'82\'ea\'82\'bd\'8f\'8a\'8c\'a9\'81\'69\'8e\'51\'8d\'6c\'97\'e1\'95\'b6\'81\'6a
+\f0 </h2>\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <div className="bg-blue-50 p-6 rounded-lg border border-blue-200 shadow-inner">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \{observationDraft\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 </p>\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 </div>\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <p className="text-sm text-gray-600 mt-4 text-center">\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \uc0\u8251 
+\f1 \'82\'b1\'82\'cc\'8f\'8a\'8c\'a9\'82\'cd
+\f0 AI
+\f1 \'82\'aa\'90\'b6\'90\'ac\'82\'b5\'82\'bd\'8e\'51\'8d\'6c\'97\'e1\'95\'b6\'82\'c5\'82\'b7\'81\'42\'95\'4b\'97\'76\'82\'c9\'89\'9e\'82\'b6\'82\'c4\'89\'c1\'95\'4d\'81\'45\'8f\'43\'90\'b3\'82\'b5\'82\'c4\'82\'b2\'8a\'88\'97\'70\'82\'ad\'82\'be\'82\'b3\'82\'a2\'81\'42
+\f0 \
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 </p>\
+\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \{/* "
+\f1 \'8e\'9f\'82\'cc\'8e\'99\'93\'b6\'82\'f0\'8d\'ec\'90\'ac\'82\'b7\'82\'e9
+\f0 " button */\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 <button\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 onClick=\{resetApp\}\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-300 ease-in-out transform hover:scale-105 mt-6"\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 >\
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 \'a0 
+\f1 \'8e\'9f\'82\'cc\'8e\'99\'93\'b6\'82\'f0\'8d\'ec\'90\'ac\'82\'b7\'82\'e9
+\f0 \
+\'a0 \'a0 \'a0 \'a0 \'a0 \'a0 </button>\
+\'a0 \'a0 \'a0 \'a0 \'a0 </div>\
+\'a0 \'a0 \'a0 \'a0 )\}\
+\'a0 \'a0 \'a0 </div>\
+\'a0 \'a0 </div>\
+\'a0 );\
+\};\
+\
+export default App;\
+}
